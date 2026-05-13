@@ -1,6 +1,6 @@
 {
   "name": "astro-asteroids",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Astro integration that adds a destroy-the-site Asteroids easter egg to any Astro project. One line in astro.config, optional footer button.",
   "type": "module",
   "main": "./dist/index.js",

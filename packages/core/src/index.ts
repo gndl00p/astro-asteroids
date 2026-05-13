@@ -435,15 +435,18 @@ export function start(opts: DestroySiteOptions = {}): void {
     }
 
     if (o.powerups) {
+      // Pickups stored in DOCUMENT coords so they scroll with the page.
       const pickupFriction = Math.pow(0.99, fdt);
+      const sX = window.scrollX;
+      const sY = window.scrollY;
       for (let i = pickups.length - 1; i >= 0; i--) {
         const p = pickups[i];
         p.x += p.vx * fdt; p.y += p.vy * fdt;
         p.vx *= pickupFriction; p.vy *= pickupFriction;
         p.life -= fdt;
         if (p.life <= 0) { pickups.splice(i, 1); continue; }
-        p.x = wrap(p.x, window.innerWidth); p.y = wrap(p.y, window.innerHeight);
-        const dx = p.x - ship.x; const dy = p.y - ship.y;
+        const vx = p.x - sX; const vy = p.y - sY;
+        const dx = vx - ship.x; const dy = vy - ship.y;
         if (dx * dx + dy * dy < 26 * 26) {
           ship.doubleFireUntil = performance.now() + 8000;
           pickups.splice(i, 1);
@@ -514,8 +517,8 @@ export function start(opts: DestroySiteOptions = {}): void {
     if (o.powerups && Math.random() < 0.1) {
       const rect = t.lastRect || ({ left: x - 10, top: y - 10, width: 20, height: 20 } as DOMRect);
       pickups.push({
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
+        x: rect.left + rect.width / 2 + window.scrollX,
+        y: rect.top + rect.height / 2 + window.scrollY,
         vx: (Math.random() - 0.5) * 0.8,
         vy: (Math.random() - 0.5) * 0.8,
         life: 1500,
@@ -812,9 +815,10 @@ function render(
   for (const b of bullets) ctx.fillRect(b.x - 1.5, b.y - 1.5, 3, 3);
 
   if (o.powerups) {
+    const pSx = window.scrollX, pSy = window.scrollY;
     for (const p of pickups) {
       ctx.save();
-      ctx.translate(p.x, p.y);
+      ctx.translate(p.x - pSx, p.y - pSy);
       ctx.rotate((performance.now() / 600) % (Math.PI * 2));
       ctx.strokeStyle = o.accentColor;
       ctx.lineWidth = 1.5;
