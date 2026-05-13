@@ -51,6 +51,7 @@ interface Target {
 interface Bullet { x: number; y: number; vx: number; vy: number; ttl: number; }
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; kind?: string; }
 interface Debris { x: number; y: number; vx: number; vy: number; angle: number; spin: number; size: number; color: string; life: number; }
+interface Ring { x: number; y: number; r: number; speed: number; life: number; maxLife: number; color: string; }
 interface Pickup { x: number; y: number; vx: number; vy: number; life: number; }
 
 interface DroneNode {
@@ -109,7 +110,7 @@ function defaults(opts: DestroySiteOptions): Required<DestroySiteOptions> {
     bulletSpeed: opts.bulletSpeed ?? 8,
     skipSelectors: opts.skipSelectors ?? [],
     flashTargets: opts.flashTargets ?? true,
-    screenShake: opts.screenShake ?? true,
+    screenShake: opts.screenShake ?? false,
     engineTrail: opts.engineTrail ?? true,
     engineDrone: opts.engineDrone ?? true,
     crtOverlay: opts.crtOverlay ?? true,
@@ -270,6 +271,7 @@ export function start(opts: DestroySiteOptions = {}): void {
   const bullets: Bullet[] = [];
   const particles: Particle[] = [];
   const debris: Debris[] = [];
+  const rings: Ring[] = [];
   const pickups: Pickup[] = [];
   let shotCooldown = 0;
   let raf = 0;
@@ -475,7 +477,14 @@ export function start(opts: DestroySiteOptions = {}): void {
       if (d.life <= 0 || d.y > window.innerHeight + 40) debris.splice(i, 1);
     }
 
-    render(ship, bullets, particles, debris, pickups, ctx, stat, score, totalTargetsAtStart, o, SHIP_SIZE);
+    for (let i = rings.length - 1; i >= 0; i--) {
+      const r = rings[i];
+      r.r += r.speed * fdt;
+      r.life -= fdt;
+      if (r.life <= 0) rings.splice(i, 1);
+    }
+
+    render(ship, bullets, particles, debris, rings, pickups, ctx, stat, score, totalTargetsAtStart, o, SHIP_SIZE);
 
     if (state!.targets.length === 0 && !state!.complete) {
       state!.complete = true;
@@ -507,7 +516,7 @@ export function start(opts: DestroySiteOptions = {}): void {
     score.destroyed += score.combo;
     score.multiplier = score.combo;
 
-    destroyElement(t.el, x, y, particles, debris, o.particleColor, o.shipColor);
+    destroyElement(t.el, x, y, particles, debris, rings, o.particleColor, o.shipColor);
     state!.targets.splice(hit.idx, 1);
     pruneDetached(state!.targets);
 
@@ -735,27 +744,30 @@ function findHit(x: number, y: number, targets: Target[]): { t: Target; idx: num
   return null;
 }
 
-function destroyElement(el: Element, hitX: number, hitY: number, particles: Particle[], debris: Debris[], particleColor: string, shipColor: string) {
-  for (let i = 0; i < 8; i++) {
+function destroyElement(el: Element, hitX: number, hitY: number, particles: Particle[], debris: Debris[], rings: Ring[], particleColor: string, shipColor: string) {
+  for (let i = 0; i < 18; i++) {
     const ang = Math.random() * Math.PI * 2;
-    const spd = 1.2 + Math.random() * 2.4;
-    particles.push({ x: hitX, y: hitY, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, life: 32 });
+    const spd = 1.6 + Math.random() * 3.6;
+    particles.push({ x: hitX, y: hitY, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, life: 44 });
   }
 
+  rings.push({ x: hitX, y: hitY, r: 4, speed: 4.2, life: 28, maxLife: 28, color: shipColor });
+  rings.push({ x: hitX, y: hitY, r: 2, speed: 2.6, life: 22, maxLife: 22, color: particleColor });
+
   const rect = el.getBoundingClientRect();
-  const debrisCount = Math.min(8, Math.max(3, Math.floor(rect.width * rect.height / 9000)));
+  const debrisCount = Math.min(16, Math.max(5, Math.floor(rect.width * rect.height / 4500)));
   for (let i = 0; i < debrisCount; i++) {
     const fx = rect.left + Math.random() * rect.width;
     const fy = rect.top + Math.random() * rect.height;
     debris.push({
       x: fx, y: fy,
-      vx: (fx - hitX) / 40 + (Math.random() - 0.5) * 3,
-      vy: (fy - hitY) / 40 - 2 - Math.random() * 3,
+      vx: (fx - hitX) / 30 + (Math.random() - 0.5) * 4,
+      vy: (fy - hitY) / 30 - 2.5 - Math.random() * 3.5,
       angle: Math.random() * Math.PI,
-      spin: (Math.random() - 0.5) * 0.4,
-      size: 3 + Math.random() * 5,
+      spin: (Math.random() - 0.5) * 0.5,
+      size: 3 + Math.random() * 6,
       color: Math.random() < 0.7 ? particleColor : shipColor,
-      life: 70 + Math.random() * 40,
+      life: 80 + Math.random() * 50,
     });
   }
 
@@ -785,11 +797,22 @@ function destroyElement(el: Element, hitX: number, hitY: number, particles: Part
 
 function render(
   ship: { x: number; y: number; angle: number; doubleFireUntil: number; hyperAlpha: number },
-  bullets: Bullet[], particles: Particle[], debris: Debris[], pickups: Pickup[],
+  bullets: Bullet[], particles: Particle[], debris: Debris[], rings: Ring[], pickups: Pickup[],
   ctx: CanvasRenderingContext2D, stat: HTMLDivElement | null, score: { destroyed: number; startTime: number; combo: number },
   total: number, o: Required<DestroySiteOptions>, SHIP_SIZE: number,
 ) {
   ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+  for (const r of rings) {
+    const a = Math.max(0, r.life / r.maxLife);
+    ctx.globalAlpha = a * 0.7;
+    ctx.strokeStyle = r.color;
+    ctx.lineWidth = 1.5 * a + 0.4;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
 
   for (const p of particles) {
     const lifeMax = p.kind === "engine" ? 22 : 40;
