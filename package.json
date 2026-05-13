@@ -1,0 +1,18 @@
+{
+  "name": "astro-asteroids-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "demo"
+  ],
+  "scripts": {
+    "build": "bun run --filter '@robbtech/destroy-site' build && bun run --filter 'astro-asteroids' build",
+    "demo": "bun run --cwd demo dev",
+    "check": "bun run --filter '*' typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

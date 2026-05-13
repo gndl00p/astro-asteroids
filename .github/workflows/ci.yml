@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Typecheck core
+        run: bun run --cwd packages/core typecheck
+      - name: Typecheck astro
+        run: bun run --cwd packages/astro typecheck
+      - name: Build core
+        run: bun run --cwd packages/core build
+      - name: Build astro integration
+        run: bun run --cwd packages/astro build
+      - name: Build demo
+        run: bun run --cwd demo build

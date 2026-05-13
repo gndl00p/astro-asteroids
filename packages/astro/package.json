@@ -1,0 +1,51 @@
+{
+  "name": "astro-asteroids",
+  "version": "0.1.0",
+  "description": "Astro integration that adds a destroy-the-site Asteroids easter egg to any Astro project. One line in astro.config, optional footer button.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "keywords": [
+    "astro",
+    "astro-integration",
+    "asteroids",
+    "easter-egg",
+    "destroy",
+    "canvas",
+    "game"
+  ],
+  "license": "MIT",
+  "author": "Philip Robb <philip@teamrobb.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gndl00p/astro-asteroids.git",
+    "directory": "packages/astro"
+  },
+  "homepage": "https://github.com/gndl00p/astro-asteroids#readme",
+  "peerDependencies": {
+    "astro": "^5.0.0 || ^6.0.0"
+  },
+  "dependencies": {
+    "@robbtech/destroy-site": "workspace:^"
+  },
+  "devDependencies": {
+    "astro": "^6.1.8",
+    "typescript": "^5.7.2"
+  }
+}

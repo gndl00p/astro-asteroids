@@ -1,0 +1,46 @@
+{
+  "name": "@robbtech/destroy-site",
+  "version": "0.1.0",
+  "description": "Asteroids spaceship overlay that lets visitors shoot and destroy elements on any web page. Pure vanilla JS, no deps.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./browser": {
+      "import": "./dist/browser.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "keywords": [
+    "asteroids",
+    "destroy",
+    "easter-egg",
+    "canvas",
+    "game",
+    "vanilla-js"
+  ],
+  "license": "MIT",
+  "author": "Philip Robb <philip@teamrobb.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gndl00p/astro-asteroids.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/gndl00p/astro-asteroids/tree/main/packages/core#readme",
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
