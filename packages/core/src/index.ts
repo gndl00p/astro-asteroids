@@ -286,6 +286,11 @@ export function start(opts: DestroySiteOptions = {}): void {
     multiplier: 1,
   };
 
+  // Delta-time clock. fdt = "frame-equivalent" delta (1.0 at 60Hz).
+  // Keeps the per-frame-tuned defaults (thrust/friction/rotationSpeed) legible
+  // while making behavior identical at 60/120/144/240Hz.
+  let lastT = performance.now();
+
   function onKeyDown(e: KeyboardEvent) {
     if (e.key === "Escape") { e.preventDefault(); stop(); return; }
     if (e.key === "r" || e.key === "R") {
@@ -350,13 +355,21 @@ export function start(opts: DestroySiteOptions = {}): void {
 
   function step() {
     if (stopped) return;
-    if (keys["ArrowLeft"])  ship.angle -= o.rotationSpeed;
-    if (keys["ArrowRight"]) ship.angle += o.rotationSpeed;
+
+    // dt in seconds; fdt = how many "60Hz frames" elapsed since last tick.
+    // Cap to avoid teleports after tab-switch / GC pause.
+    const now = performance.now();
+    const dt = Math.min((now - lastT) / 1000, 0.1);
+    lastT = now;
+    const fdt = dt * 60;
+
+    if (keys["ArrowLeft"])  ship.angle -= o.rotationSpeed * fdt;
+    if (keys["ArrowRight"]) ship.angle += o.rotationSpeed * fdt;
     if (keys["ArrowUp"]) {
-      ship.vx += Math.cos(ship.angle) * o.thrust;
-      ship.vy += Math.sin(ship.angle) * o.thrust;
+      ship.vx += Math.cos(ship.angle) * o.thrust * fdt;
+      ship.vy += Math.sin(ship.angle) * o.thrust * fdt;
       if (o.engineDrone) startDrone();
-      if (o.engineTrail && Math.random() < 0.7) {
+      if (o.engineTrail && Math.random() < 0.7 * fdt) {
         const rearX = ship.x - Math.cos(ship.angle) * SHIP_SIZE * 0.7;
         const rearY = ship.y - Math.sin(ship.angle) * SHIP_SIZE * 0.7;
         const spread = (Math.random() - 0.5) * 0.5;
@@ -369,27 +382,28 @@ export function start(opts: DestroySiteOptions = {}): void {
         });
       }
     }
-    ship.vx *= o.friction;
-    ship.vy *= o.friction;
-    ship.x = wrap(ship.x + ship.vx, window.innerWidth);
+    const friction = Math.pow(o.friction, fdt);
+    ship.vx *= friction;
+    ship.vy *= friction;
+    ship.x = wrap(ship.x + ship.vx * fdt, window.innerWidth);
 
     // Edge-driven scroll (only while engine on)
     const SCROLL_MARGIN = 90;
     const topPad = SCROLL_MARGIN;
     const botPad = window.innerHeight - SCROLL_MARGIN;
-    const nextY = ship.y + ship.vy;
+    const nextY = ship.y + ship.vy * fdt;
     const docMaxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
     const thrusting = !!keys["ArrowUp"];
     if (o.scrollOnEdge && nextY < topPad) {
       if (thrusting && ship.vy < 0) {
-        const want = Math.max(Math.abs(ship.vy) * o.scrollAmp, o.scrollMin);
+        const want = Math.max(Math.abs(ship.vy) * o.scrollAmp, o.scrollMin) * fdt;
         const canScroll = Math.min(window.scrollY, want);
         if (canScroll > 0) window.scrollBy(0, -canScroll); else ship.vy = 0;
       } else { ship.vy = 0; }
       ship.y = topPad;
     } else if (o.scrollOnEdge && nextY > botPad) {
       if (thrusting && ship.vy > 0) {
-        const want = Math.max(Math.abs(ship.vy) * o.scrollAmp, o.scrollMin);
+        const want = Math.max(Math.abs(ship.vy) * o.scrollAmp, o.scrollMin) * fdt;
         const canScroll = Math.min(docMaxScroll - window.scrollY, want);
         if (canScroll > 0) window.scrollBy(0, canScroll); else ship.vy = 0;
       } else { ship.vy = 0; }
@@ -398,10 +412,10 @@ export function start(opts: DestroySiteOptions = {}): void {
       ship.y = wrap(nextY, window.innerHeight);
     }
 
-    if (ship.hyperCooldown > 0) ship.hyperCooldown--;
+    if (ship.hyperCooldown > 0) ship.hyperCooldown -= fdt;
 
-    if (shotCooldown > 0) shotCooldown--;
-    if (keys["Space"] && shotCooldown === 0) {
+    if (shotCooldown > 0) shotCooldown -= fdt;
+    if (keys["Space"] && shotCooldown <= 0) {
       fireBullet(ship, bullets, SHIP_SIZE, BULLET_TTL, o.bulletSpeed);
       shotCooldown = 6;
       playShoot();
@@ -409,7 +423,7 @@ export function start(opts: DestroySiteOptions = {}): void {
 
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
-      b.x += b.vx; b.y += b.vy; b.ttl--;
+      b.x += b.vx * fdt; b.y += b.vy * fdt; b.ttl -= fdt;
       if (b.ttl <= 0 || b.x < 0 || b.y < 0 || b.x > window.innerWidth || b.y > window.innerHeight) {
         bullets.splice(i, 1);
         continue;
@@ -422,11 +436,12 @@ export function start(opts: DestroySiteOptions = {}): void {
     }
 
     if (o.powerups) {
+      const pickupFriction = Math.pow(0.99, fdt);
       for (let i = pickups.length - 1; i >= 0; i--) {
         const p = pickups[i];
-        p.x += p.vx; p.y += p.vy;
-        p.vx *= 0.99; p.vy *= 0.99;
-        p.life--;
+        p.x += p.vx * fdt; p.y += p.vy * fdt;
+        p.vx *= pickupFriction; p.vy *= pickupFriction;
+        p.life -= fdt;
         if (p.life <= 0) { pickups.splice(i, 1); continue; }
         p.x = wrap(p.x, window.innerWidth); p.y = wrap(p.y, window.innerHeight);
         const dx = p.x - ship.x; const dy = p.y - ship.y;
@@ -438,21 +453,23 @@ export function start(opts: DestroySiteOptions = {}): void {
       }
     }
 
+    const partFricFast = Math.pow(0.92, fdt);
+    const partFricSlow = Math.pow(0.95, fdt);
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
-      p.x += p.vx; p.y += p.vy;
-      if (p.kind !== "engine") { p.vx *= 0.95; p.vy *= 0.95; }
-      else { p.vx *= 0.92; p.vy *= 0.92; }
-      p.life--;
+      p.x += p.vx * fdt; p.y += p.vy * fdt;
+      if (p.kind !== "engine") { p.vx *= partFricSlow; p.vy *= partFricSlow; }
+      else { p.vx *= partFricFast; p.vy *= partFricFast; }
+      p.life -= fdt;
       if (p.life <= 0) particles.splice(i, 1);
     }
 
     for (let i = debris.length - 1; i >= 0; i--) {
       const d = debris[i];
-      d.x += d.vx; d.y += d.vy;
-      d.vy += 0.18;
-      d.angle += d.spin;
-      d.life--;
+      d.x += d.vx * fdt; d.y += d.vy * fdt;
+      d.vy += 0.18 * fdt;
+      d.angle += d.spin * fdt;
+      d.life -= fdt;
       if (d.life <= 0 || d.y > window.innerHeight + 40) debris.splice(i, 1);
     }
 
