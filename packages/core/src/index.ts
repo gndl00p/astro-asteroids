@@ -132,10 +132,9 @@ function injectStyles(o: Required<DestroySiteOptions>) {
   style.textContent = `
     @keyframes rt-shake {
       0%, 100% { transform: translate3d(0,0,0); }
-      30% { transform: translate3d(-1px, 1px, 0); }
-      60% { transform: translate3d(1px, -1px, 0); }
+      50% { transform: translate3d(-0.5px, 0.5px, 0); }
     }
-    body.rt-shaking { animation: rt-shake 120ms ease-out; }
+    body.rt-shaking { animation: rt-shake 80ms ease-out; }
     html.rt-asteroids-active { scroll-behavior: auto !important; }
     html.rt-asteroids-active body { scroll-behavior: auto !important; }
     [data-rt-debris] {
@@ -669,7 +668,7 @@ function triggerShake() {
   document.body.classList.remove("rt-shaking");
   void document.body.offsetWidth;
   document.body.classList.add("rt-shaking");
-  setTimeout(() => document.body.classList.remove("rt-shaking"), 120);
+  setTimeout(() => document.body.classList.remove("rt-shaking"), 80);
 }
 
 function wrap(v: number, max: number): number {
@@ -734,14 +733,14 @@ function findHit(x: number, y: number, targets: Target[]): { t: Target; idx: num
 }
 
 function destroyElement(el: Element, hitX: number, hitY: number, particles: Particle[], debris: Debris[], particleColor: string, shipColor: string) {
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 8; i++) {
     const ang = Math.random() * Math.PI * 2;
-    const spd = 1.5 + Math.random() * 3;
-    particles.push({ x: hitX, y: hitY, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, life: 40 });
+    const spd = 1.2 + Math.random() * 2.4;
+    particles.push({ x: hitX, y: hitY, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, life: 32 });
   }
 
   const rect = el.getBoundingClientRect();
-  const debrisCount = Math.min(12, Math.max(4, Math.floor(rect.width * rect.height / 6000)));
+  const debrisCount = Math.min(8, Math.max(3, Math.floor(rect.width * rect.height / 9000)));
   for (let i = 0; i < debrisCount; i++) {
     const fx = rect.left + Math.random() * rect.width;
     const fy = rect.top + Math.random() * rect.height;
@@ -928,20 +927,20 @@ function playBoom(el: Element | null) {
   const osc = ac.createOscillator(); const oscGain = ac.createGain();
   osc.type = "sawtooth";
   osc.frequency.setValueAtTime(basePitch, t);
-  osc.frequency.exponentialRampToValueAtTime(Math.max(20, endPitch), t + 0.35);
-  oscGain.gain.setValueAtTime(0.09, t);
-  oscGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(20, endPitch), t + 0.28);
+  oscGain.gain.setValueAtTime(0.05, t);
+  oscGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
   osc.connect(oscGain).connect(ac.destination);
-  osc.start(t); osc.stop(t + 0.4);
+  osc.start(t); osc.stop(t + 0.32);
 
-  const len = Math.floor(ac.sampleRate * 0.2);
+  const len = Math.floor(ac.sampleRate * 0.14);
   const buf = ac.createBuffer(1, len, ac.sampleRate);
   const d = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 1.6);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 1.8);
   const src = ac.createBufferSource(); src.buffer = buf;
   const nGain = ac.createGain();
-  nGain.gain.setValueAtTime(0.06, t);
-  nGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+  nGain.gain.setValueAtTime(0.03, t);
+  nGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
   src.connect(nGain).connect(ac.destination);
   src.start(t);
 }
