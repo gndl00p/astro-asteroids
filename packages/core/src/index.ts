@@ -40,6 +40,9 @@ export interface DestroySiteOptions {
   multiHitHealth?: boolean;
   hyperspace?: boolean;
   comboWindowMs?: number;
+  enemies?: boolean;
+  enemySpawnScore?: number;
+  enemyRespawnMs?: number;
 }
 
 interface Target {
@@ -53,6 +56,8 @@ interface Particle { x: number; y: number; vx: number; vy: number; life: number;
 interface Debris { x: number; y: number; vx: number; vy: number; angle: number; spin: number; size: number; color: string; life: number; }
 interface Ring { x: number; y: number; r: number; speed: number; life: number; maxLife: number; color: string; }
 interface Pickup { x: number; y: number; vx: number; vy: number; life: number; }
+interface Enemy { x: number; y: number; vx: number; vy: number; hp: number; maxHp: number; fireCooldown: number; t: number; }
+interface EnemyBullet { x: number; y: number; vx: number; vy: number; ttl: number; }
 
 interface DroneNode {
   osc: OscillatorNode;
@@ -123,6 +128,9 @@ function defaults(opts: DestroySiteOptions): Required<DestroySiteOptions> {
     multiHitHealth: opts.multiHitHealth ?? true,
     hyperspace: opts.hyperspace ?? true,
     comboWindowMs: opts.comboWindowMs ?? 2000,
+    enemies: opts.enemies ?? true,
+    enemySpawnScore: opts.enemySpawnScore ?? 500,
+    enemyRespawnMs: opts.enemyRespawnMs ?? 10000,
   };
 }
 
@@ -136,6 +144,14 @@ function injectStyles(o: Required<DestroySiteOptions>) {
       50% { transform: translate3d(-0.5px, 0.5px, 0); }
     }
     body.rt-shaking { animation: rt-shake 80ms ease-out; }
+    @keyframes rt-glitch {
+      0%, 100% { filter: none; }
+      20% { filter: hue-rotate(80deg) contrast(1.6) saturate(2); }
+      40% { filter: invert(0.15) saturate(1.4); }
+      60% { filter: hue-rotate(-40deg) contrast(1.2); }
+      80% { filter: brightness(0.85) saturate(1.8); }
+    }
+    body.rt-glitched { animation: rt-glitch 240ms steps(5); }
     html.rt-asteroids-active { scroll-behavior: auto !important; }
     html.rt-asteroids-active body { scroll-behavior: auto !important; }
     [data-rt-debris] {
@@ -226,6 +242,7 @@ export function start(opts: DestroySiteOptions = {}): void {
   }
 
   let stat: HTMLDivElement | null = null;
+  let updateHud: () => void = () => { /* no-op when hud hidden */ };
   if (!o.hideHud) {
     stat = document.createElement("div");
     stat.setAttribute("data-asteroids-hud", "");
@@ -234,10 +251,78 @@ export function start(opts: DestroySiteOptions = {}): void {
       fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
       fontSize: "11px", lineHeight: "1.5", letterSpacing: "0.18em", color: o.shipColor,
       textTransform: "uppercase", background: "rgba(10,10,10,0.85)",
-      padding: "10px 14px", border: "1px solid " + o.shipColor, pointerEvents: "none",
-      minWidth: "200px", textAlign: "right", whiteSpace: "pre",
+      padding: "12px 14px 10px", border: "1px solid " + o.shipColor, pointerEvents: "none",
+      minWidth: "180px", textAlign: "right",
     });
+
+    const scoreLabel = document.createElement("div");
+    scoreLabel.textContent = "SCORE";
+    scoreLabel.style.cssText = "font-size:9px;letter-spacing:0.32em;opacity:0.6;margin-bottom:6px;";
+    stat.appendChild(scoreLabel);
+
+    const scoreRow = document.createElement("div");
+    scoreRow.style.cssText = "display:flex;justify-content:flex-end;gap:2px;margin-bottom:10px;";
+    const SCORE_DIGITS = 6;
+    const SCORE_CELL_H = 22;
+    const scoreCells: HTMLDivElement[] = [];
+    for (let i = 0; i < SCORE_DIGITS; i++) {
+      const cell = document.createElement("div");
+      cell.style.cssText =
+        "width:16px;height:" + SCORE_CELL_H + "px;overflow:hidden;" +
+        "background:rgba(0,0,0,0.6);border:1px solid currentColor;" +
+        "box-shadow:inset 0 0 6px rgba(0,0,0,0.75);" +
+        "font-size:15px;letter-spacing:0;text-align:center;" +
+        "font-variant-numeric:tabular-nums;";
+      const strip = document.createElement("div");
+      strip.style.cssText =
+        "transition:transform 380ms cubic-bezier(.22,1.4,.36,1);will-change:transform;";
+      for (let n = 0; n < 10; n++) {
+        const digit = document.createElement("div");
+        digit.textContent = String(n);
+        digit.style.cssText = "height:" + SCORE_CELL_H + "px;line-height:" + SCORE_CELL_H + "px;";
+        strip.appendChild(digit);
+      }
+      strip.dataset.cur = "0";
+      cell.appendChild(strip);
+      scoreRow.appendChild(cell);
+      scoreCells.push(strip);
+    }
+    stat.appendChild(scoreRow);
+
+    const timeRow = document.createElement("div");
+    const comboRow = document.createElement("div");
+    comboRow.style.display = "none";
+    const muteRow = document.createElement("div");
+    muteRow.style.cssText = "margin-top:4px;opacity:0.55;font-size:10px;";
+    stat.appendChild(timeRow);
+    stat.appendChild(comboRow);
+    stat.appendChild(muteRow);
     document.body.appendChild(stat);
+
+    updateHud = () => {
+      const elapsed = Math.floor((performance.now() - score.startTime) / 1000);
+      const mm = String(Math.floor(elapsed / 60));
+      const ss = String(elapsed % 60).padStart(2, "0");
+      timeRow.textContent = `TIME ${mm}:${ss}`;
+      muteRow.textContent = state?.muted ? "[M:OFF]" : "[M:ON]";
+      if (score.combo > 1) {
+        comboRow.style.display = "";
+        comboRow.textContent = `COMBO x${score.combo}`;
+      } else {
+        comboRow.style.display = "none";
+      }
+      stat!.style.color = score.combo > 2 ? o.accentColor : o.shipColor;
+      stat!.style.borderColor = score.combo > 2 ? o.accentColor : o.shipColor;
+      const digits = String(score.destroyed).padStart(SCORE_DIGITS, "0");
+      for (let i = 0; i < SCORE_DIGITS; i++) {
+        const d = digits[i];
+        const strip = scoreCells[i];
+        if (strip.dataset.cur !== d) {
+          strip.dataset.cur = d;
+          strip.style.transform = `translateY(-${parseInt(d, 10) * SCORE_CELL_H}px)`;
+        }
+      }
+    };
   }
 
   if (document.activeElement && typeof (document.activeElement as HTMLElement).blur === "function") {
@@ -265,6 +350,7 @@ export function start(opts: DestroySiteOptions = {}): void {
     vx: 0, vy: 0, angle: -Math.PI / 2,
     hyperCooldown: 0, hyperAlpha: 1,
     doubleFireUntil: 0,
+    invulnUntil: 0,
   };
 
   const keys: Record<string, boolean> = Object.create(null);
@@ -273,6 +359,9 @@ export function start(opts: DestroySiteOptions = {}): void {
   const debris: Debris[] = [];
   const rings: Ring[] = [];
   const pickups: Pickup[] = [];
+  const enemies: Enemy[] = [];
+  const enemyBullets: EnemyBullet[] = [];
+  let enemyNextEligibleAt = 0;
   let shotCooldown = 0;
   let raf = 0;
   let stopped = false;
@@ -486,7 +575,95 @@ export function start(opts: DestroySiteOptions = {}): void {
       if (r.life <= 0) rings.splice(i, 1);
     }
 
-    render(ship, bullets, particles, debris, rings, pickups, ctx, stat, score, totalTargetsAtStart, o, SHIP_SIZE);
+    // Saucer spawn / update / collisions
+    if (o.enemies) {
+      if (enemies.length === 0) {
+        const nowMs = performance.now();
+        if (enemyNextEligibleAt === 0) {
+          if (score.destroyed >= o.enemySpawnScore) spawnSaucer();
+        } else if (nowMs >= enemyNextEligibleAt) {
+          spawnSaucer();
+        }
+      }
+
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        const e = enemies[i];
+        e.t += fdt;
+        const dx = ship.x - e.x;
+        e.vx += Math.sign(dx) * 0.006 * fdt;
+        if (e.vx > 2.2) e.vx = 2.2;
+        if (e.vx < -2.2) e.vx = -2.2;
+        e.vy = Math.sin(e.t * 0.04) * 1.4;
+        e.x += e.vx * fdt;
+        e.y += e.vy * fdt;
+        if (e.x < -60) e.x = window.innerWidth + 60;
+        if (e.x > window.innerWidth + 60) e.x = -60;
+        if (e.y < 60) e.y = 60;
+        if (e.y > window.innerHeight - 60) e.y = window.innerHeight - 60;
+
+        e.fireCooldown -= fdt;
+        if (e.fireCooldown <= 0) {
+          e.fireCooldown = 100 + Math.random() * 40;
+          const ang = Math.atan2(ship.y - e.y, ship.x - e.x) + (Math.random() - 0.5) * 0.32;
+          enemyBullets.push({
+            x: e.x, y: e.y + 4,
+            vx: Math.cos(ang) * 4,
+            vy: Math.sin(ang) * 4,
+            ttl: 140,
+          });
+          playEnemyShoot();
+        }
+
+        for (let j = bullets.length - 1; j >= 0; j--) {
+          const b = bullets[j];
+          const ddx = b.x - e.x;
+          const ddy = b.y - e.y;
+          if (ddx * ddx + ddy * ddy < 20 * 20) {
+            bullets.splice(j, 1);
+            e.hp -= 1;
+            for (let k = 0; k < 6; k++) {
+              const a = Math.random() * Math.PI * 2;
+              const spd = 1 + Math.random() * 2;
+              particles.push({ x: b.x, y: b.y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, life: 22 });
+            }
+            playHit();
+            if (e.hp <= 0) {
+              score.destroyed += 200;
+              for (let k = 0; k < 28; k++) {
+                const a = Math.random() * Math.PI * 2;
+                const spd = 2 + Math.random() * 4;
+                particles.push({ x: e.x, y: e.y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, life: 52 });
+              }
+              rings.push({ x: e.x, y: e.y, r: 6, speed: 5, life: 32, maxLife: 32, color: o.accentColor });
+              rings.push({ x: e.x, y: e.y, r: 3, speed: 3.4, life: 26, maxLife: 26, color: o.particleColor });
+              playSaucerKill();
+              enemies.splice(i, 1);
+              enemyNextEligibleAt = performance.now() + o.enemyRespawnMs;
+              break;
+            }
+          }
+        }
+      }
+
+      const nowShip = performance.now();
+      for (let i = enemyBullets.length - 1; i >= 0; i--) {
+        const b = enemyBullets[i];
+        b.x += b.vx * fdt; b.y += b.vy * fdt; b.ttl -= fdt;
+        if (b.ttl <= 0 || b.x < 0 || b.y < 0 || b.x > window.innerWidth || b.y > window.innerHeight) {
+          enemyBullets.splice(i, 1);
+          continue;
+        }
+        if (nowShip < ship.invulnUntil) continue;
+        const dx = b.x - ship.x; const dy = b.y - ship.y;
+        if (dx * dx + dy * dy < 14 * 14) {
+          enemyBullets.splice(i, 1);
+          onShipHit();
+        }
+      }
+    }
+
+    render(ship, bullets, particles, debris, rings, pickups, enemies, enemyBullets, ctx, o, SHIP_SIZE);
+    updateHud();
 
     if (state!.targets.length === 0 && !state!.complete) {
       state!.complete = true;
@@ -595,6 +772,33 @@ export function start(opts: DestroySiteOptions = {}): void {
     document.body.appendChild(el);
     state!.completeEl = el;
     playComplete();
+  }
+
+  function spawnSaucer() {
+    const fromLeft = Math.random() < 0.5;
+    enemies.push({
+      x: fromLeft ? -40 : window.innerWidth + 40,
+      y: 100 + Math.random() * (window.innerHeight - 220),
+      vx: fromLeft ? 1.6 : -1.6,
+      vy: 0,
+      hp: 4, maxHp: 4,
+      fireCooldown: 70,
+      t: 0,
+    });
+    playSaucerAlarm();
+  }
+
+  function onShipHit() {
+    score.combo = 1;
+    score.multiplier = 1;
+    ship.invulnUntil = performance.now() + 1200;
+    if (!REDUCED_MOTION) {
+      document.body.classList.remove("rt-glitched");
+      void document.body.offsetWidth;
+      document.body.classList.add("rt-glitched");
+      setTimeout(() => document.body.classList.remove("rt-glitched"), 260);
+    }
+    playGlitchHit();
   }
 
   function restart() {
@@ -800,8 +1004,8 @@ function destroyElement(el: Element, hitX: number, hitY: number, particles: Part
 function render(
   ship: { x: number; y: number; angle: number; doubleFireUntil: number; hyperAlpha: number },
   bullets: Bullet[], particles: Particle[], debris: Debris[], rings: Ring[], pickups: Pickup[],
-  ctx: CanvasRenderingContext2D, stat: HTMLDivElement | null, score: { destroyed: number; startTime: number; combo: number },
-  total: number, o: Required<DestroySiteOptions>, SHIP_SIZE: number,
+  enemies: Enemy[], enemyBullets: EnemyBullet[],
+  ctx: CanvasRenderingContext2D, o: Required<DestroySiteOptions>, SHIP_SIZE: number,
 ) {
   ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
@@ -838,6 +1042,31 @@ function render(
 
   ctx.fillStyle = o.shipColor;
   for (const b of bullets) ctx.fillRect(b.x - 1.5, b.y - 1.5, 3, 3);
+
+  ctx.fillStyle = o.accentColor;
+  for (const b of enemyBullets) ctx.fillRect(b.x - 2, b.y - 2, 4, 4);
+
+  for (const e of enemies) {
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.strokeStyle = o.accentColor;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(0, -4, 8, 4, 0, Math.PI, 0, false);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 15, 4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = o.particleColor;
+    ctx.globalAlpha = 0.55 + 0.45 * Math.sin(performance.now() / 110);
+    ctx.fillRect(-3, 3, 6, 1.6);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = o.accentColor;
+    for (let i = 0; i < e.hp; i++) {
+      ctx.fillRect(-((e.maxHp * 4 - 2) / 2) + i * 4, -13, 2.5, 2.5);
+    }
+    ctx.restore();
+  }
 
   if (o.powerups) {
     const pSx = window.scrollX, pSy = window.scrollY;
@@ -900,23 +1129,6 @@ function render(
 
   ctx.restore();
   ctx.globalAlpha = 1;
-
-  if (stat) {
-    const elapsed = Math.floor((performance.now() - score.startTime) / 1000);
-    const mm = String(Math.floor(elapsed / 60));
-    const ss = String(elapsed % 60).padStart(2, "0");
-    const destroyed = total - (state?.targets.length ?? 0);
-    const muteFlag = state?.muted ? "[M:OFF]" : "[M:ON]";
-    const comboLine = score.combo > 1 ? `\nCOMBO     x${score.combo}` : "";
-    stat.style.color = score.combo > 2 ? o.accentColor : o.shipColor;
-    stat.style.borderColor = score.combo > 2 ? o.accentColor : o.shipColor;
-    stat.textContent =
-      `TARGETS   ${state?.targets.length ?? 0}\n` +
-      `DESTROYED ${destroyed}\n` +
-      `SCORE     ${score.destroyed}\n` +
-      `TIME      ${mm}:${ss}` +
-      comboLine + `\n${muteFlag}`;
-  }
 }
 
 // ── Web Audio ─────────────────────────────────────────────────────────
@@ -1033,6 +1245,78 @@ function playComplete() {
     osc.connect(gain).connect(ac.destination);
     osc.start(t + i * 0.14); osc.stop(t + i * 0.14 + 0.32);
   });
+}
+
+function playEnemyShoot() {
+  const ac = ensureAudio(); if (!ac) return;
+  const t = ac.currentTime;
+  const osc = ac.createOscillator(); const gain = ac.createGain();
+  osc.type = "sawtooth";
+  osc.frequency.setValueAtTime(220, t);
+  osc.frequency.exponentialRampToValueAtTime(70, t + 0.12);
+  gain.gain.setValueAtTime(0.045, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+  osc.connect(gain).connect(ac.destination);
+  osc.start(t); osc.stop(t + 0.14);
+}
+
+function playSaucerAlarm() {
+  const ac = ensureAudio(); if (!ac) return;
+  const t = ac.currentTime;
+  const tones = [620, 380];
+  tones.forEach((freq, i) => {
+    const osc = ac.createOscillator(); const gain = ac.createGain();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(freq, t + i * 0.18);
+    gain.gain.setValueAtTime(0.0001, t + i * 0.18);
+    gain.gain.exponentialRampToValueAtTime(0.05, t + i * 0.18 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.18 + 0.16);
+    osc.connect(gain).connect(ac.destination);
+    osc.start(t + i * 0.18); osc.stop(t + i * 0.18 + 0.18);
+  });
+}
+
+function playSaucerKill() {
+  const ac = ensureAudio(); if (!ac) return;
+  const t = ac.currentTime;
+  const osc = ac.createOscillator(); const gain = ac.createGain();
+  osc.type = "sawtooth";
+  osc.frequency.setValueAtTime(180, t);
+  osc.frequency.exponentialRampToValueAtTime(35, t + 0.5);
+  gain.gain.setValueAtTime(0.08, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+  osc.connect(gain).connect(ac.destination);
+  osc.start(t); osc.stop(t + 0.55);
+
+  const len = Math.floor(ac.sampleRate * 0.3);
+  const buf = ac.createBuffer(1, len, ac.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 1.4);
+  const src = ac.createBufferSource(); src.buffer = buf;
+  const nGain = ac.createGain();
+  nGain.gain.setValueAtTime(0.06, t);
+  nGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+  src.connect(nGain).connect(ac.destination);
+  src.start(t);
+}
+
+function playGlitchHit() {
+  const ac = ensureAudio(); if (!ac) return;
+  const t = ac.currentTime;
+  const len = Math.floor(ac.sampleRate * 0.18);
+  const buf = ac.createBuffer(1, len, ac.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 0.6);
+  const src = ac.createBufferSource(); src.buffer = buf;
+  const filter = ac.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.setValueAtTime(1200, t);
+  filter.Q.setValueAtTime(4, t);
+  const gain = ac.createGain();
+  gain.gain.setValueAtTime(0.09, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+  src.connect(filter).connect(gain).connect(ac.destination);
+  src.start(t);
 }
 
 function stopDrone() {
