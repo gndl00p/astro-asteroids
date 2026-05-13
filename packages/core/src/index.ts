@@ -396,18 +396,20 @@ export function start(opts: DestroySiteOptions = {}): void {
     const docMaxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
     const thrusting = !!keys["ArrowUp"];
     if (o.scrollOnEdge && nextY < topPad) {
-      if (thrusting && ship.vy < 0) {
-        const want = Math.max(Math.abs(ship.vy) * o.scrollAmp, o.scrollMin) * fdt;
+      if (ship.vy < 0) {
+        const baseWant = Math.abs(ship.vy) * o.scrollAmp;
+        const want = (thrusting ? Math.max(baseWant, o.scrollMin) : baseWant) * fdt;
         const canScroll = Math.min(window.scrollY, want);
         if (canScroll > 0) window.scrollBy(0, -canScroll); else ship.vy = 0;
-      } else { ship.vy = 0; }
+      }
       ship.y = topPad;
     } else if (o.scrollOnEdge && nextY > botPad) {
-      if (thrusting && ship.vy > 0) {
-        const want = Math.max(Math.abs(ship.vy) * o.scrollAmp, o.scrollMin) * fdt;
+      if (ship.vy > 0) {
+        const baseWant = Math.abs(ship.vy) * o.scrollAmp;
+        const want = (thrusting ? Math.max(baseWant, o.scrollMin) : baseWant) * fdt;
         const canScroll = Math.min(docMaxScroll - window.scrollY, want);
         if (canScroll > 0) window.scrollBy(0, canScroll); else ship.vy = 0;
-      } else { ship.vy = 0; }
+      }
       ship.y = botPad;
     } else {
       ship.y = wrap(nextY, window.innerHeight);
