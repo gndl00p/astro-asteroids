@@ -68,4 +68,4 @@ still works.
 
 ## License
 
-MIT — Copyright (c) 2026 Robb Technology Group, LLC
+MIT — Copyright (c) 2026 Philip Robb

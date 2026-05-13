@@ -63,4 +63,4 @@ See per-package READMEs:
 
 ## License
 
-MIT — Copyright (c) 2026 Robb Technology Group, LLC. Originally extracted from [robb.tech](https://robb.tech).
+MIT — Copyright (c) 2026 Philip Robb. Originally extracted from [robb.tech](https://robb.tech).
