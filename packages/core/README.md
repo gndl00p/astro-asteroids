@@ -44,15 +44,22 @@ start({
   bulletSpeed: 8,
   skipSelectors: ["[data-no-destroy]", ".sticky-nav"],
   flashTargets: true,
+  touchControls: undefined,   // undefined = auto (on for touch-primary devices)
 });
 ```
 
 ## Controls
 
+Keyboard:
+
 - ← / → rotate
 - ↑ thrust
 - Space fire
 - ESC exit
+
+Touch (auto-enabled on touch-primary devices, or force with `touchControls: true`):
+on-screen ◄ ► rotate, THRUST, FIRE, WARP buttons plus ✕ exit and ♪ mute. Auto-detection
+uses a coarse-and-not-fine pointer, so a mouse-driven touchscreen laptop keeps the keyboard UI.
 
 ## How it picks targets
 

@@ -53,6 +53,7 @@ export default function asteroids(opts: AsteroidsIntegrationOptions = {}): Astro
     bulletSpeed: opts.bulletSpeed,
     skipSelectors: opts.skipSelectors,
     flashTargets: opts.flashTargets,
+    touchControls: opts.touchControls,
   };
 
   return {
@@ -119,7 +120,16 @@ function mountButton() {
     border: "0",
     color: "inherit",
     cursor: "pointer",
-    padding: "0",
+    // Give the launcher a 44px min touch target on mobile. NOTE: this enlarges
+    // the button on desktop too (it was zero-padding). display:inline-flex keeps
+    // it inline so the taller hit area doesn't force a block/line break, but
+    // surrounding content can still shift by the added height — mount it in a
+    // footer/corner (buttonSelector) if that matters for your layout.
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "12px 8px",
+    minHeight: "44px",
+    touchAction: "manipulation",
   });
   btn.addEventListener("click", (e) => {
     e.preventDefault();

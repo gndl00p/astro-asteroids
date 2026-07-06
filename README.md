@@ -42,6 +42,9 @@ document.querySelector("#play")?.addEventListener("click", () => start());
 - Space fire
 - ESC exit
 
+On touch devices an on-screen control overlay (rotate / thrust / fire / warp / mute / exit)
+is shown automatically. See [`packages/core/README.md`](./packages/core/README.md#controls).
+
 ## Demo
 
 ```sh

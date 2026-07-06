@@ -43,6 +43,8 @@ export interface DestroySiteOptions {
   enemies?: boolean;
   enemySpawnScore?: number;
   enemyRespawnMs?: number;
+  /** On-screen buttons for touch devices. Default: auto (on for coarse pointers). */
+  touchControls?: boolean;
 }
 
 interface Target {
@@ -72,6 +74,7 @@ interface State {
   crt: HTMLDivElement | null;
   bootEl: HTMLDivElement | null;
   completeEl: HTMLDivElement | null;
+  touchEl: HTMLDivElement | null;
   targets: Target[];
   muted: boolean;
   complete: boolean;
@@ -131,7 +134,21 @@ function defaults(opts: DestroySiteOptions): Required<DestroySiteOptions> {
     enemies: opts.enemies ?? true,
     enemySpawnScore: opts.enemySpawnScore ?? 500,
     enemyRespawnMs: opts.enemyRespawnMs ?? 10000,
+    touchControls: opts.touchControls ?? isTouchDevice(),
   };
+}
+
+function isTouchDevice(): boolean {
+  if (typeof window === "undefined") return false;
+  if (typeof window.matchMedia === "function") {
+    // Auto-on only for a genuinely touch-primary device: coarse pointer and no
+    // fine pointer. A touchscreen laptop driven by mouse/trackpad reports BOTH
+    // coarse and fine, so it stays keyboard/mouse and never gets the overlay.
+    return window.matchMedia("(pointer: coarse)").matches &&
+      !window.matchMedia("(pointer: fine)").matches;
+  }
+  // No matchMedia (ancient browsers): fall back to raw touch capability.
+  return "ontouchstart" in window || (navigator.maxTouchPoints ?? 0) > 0;
 }
 
 function injectStyles(o: Required<DestroySiteOptions>) {
@@ -421,7 +438,7 @@ export function start(opts: DestroySiteOptions = {}): void {
   window.addEventListener("scroll", onScroll, { passive: true });
 
   state = {
-    canvas, banner, stat, crt, bootEl: null, completeEl: null,
+    canvas, banner, stat, crt, bootEl: null, completeEl: null, touchEl: null,
     targets, muted: false, complete: false, droneNode: null, opts: o,
     cleanup: () => {
       stopped = true;
@@ -437,9 +454,12 @@ export function start(opts: DestroySiteOptions = {}): void {
       crt?.remove();
       state?.bootEl?.remove();
       state?.completeEl?.remove();
+      document.querySelectorAll("[data-rt-touch]").forEach((n) => n.remove());
       document.documentElement.classList.remove("rt-asteroids-active");
     },
   };
+
+  if (o.touchControls) buildTouchControls();
 
   if (o.bootSequence && !REDUCED_MOTION) bootSequence();
 
@@ -714,6 +734,147 @@ export function start(opts: DestroySiteOptions = {}): void {
     }
   }
 
+  function buildTouchControls() {
+    const wrapEl = document.createElement("div");
+    wrapEl.setAttribute("data-rt-touch", "");
+    Object.assign(wrapEl.style, {
+      position: "fixed", inset: "0", zIndex: "100000",
+      pointerEvents: "none", touchAction: "none",
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    } as Partial<CSSStyleDeclaration>);
+
+    // Retune banner copy for touch (arrow-key hints don't apply).
+    if (banner) banner.textContent = "DESTROY-SITE.BIN · TAP TO FLY · ♪ MUTE · ✕ EXIT";
+
+    const IDLE_BG = "rgba(10,10,10,0.62)";
+    const held: Record<string, Set<number>> = Object.create(null);
+
+    // Build a pressable control. onDown/onUp fire on the first-down / last-up
+    // so multi-finger jitter on one button doesn't drop the hold. `color`
+    // themes the border, text, and pressed-state tint (color-mix accepts any
+    // CSS color, so 3-digit hex / rgb() / named colors all tint correctly).
+    function mkBtn(label: string, id: string, onDown: () => void, onUp?: () => void, big = false, color: string = o.shipColor) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.setAttribute("aria-label", id);
+      btn.textContent = label;
+      const size = big ? "84px" : "60px";
+      const pressedBg = "color-mix(in srgb, " + color + " 30%, #0A0A0A)";
+      Object.assign(btn.style, {
+        pointerEvents: "auto", touchAction: "none", userSelect: "none",
+        WebkitUserSelect: "none", WebkitTapHighlightColor: "transparent",
+        minWidth: size, minHeight: size, padding: "0 4px",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontFamily: "inherit", fontSize: big ? "16px" : "22px", lineHeight: "1",
+        letterSpacing: "0.04em", textTransform: "uppercase",
+        color: color, background: IDLE_BG,
+        border: "1px solid " + color, borderRadius: "12px",
+        cursor: "pointer", backdropFilter: "blur(2px)",
+      } as Partial<CSSStyleDeclaration>);
+      held[id] = new Set<number>();
+      const down = (e: PointerEvent) => {
+        e.preventDefault();
+        try { btn.setPointerCapture(e.pointerId); } catch { /* */ }
+        const first = held[id].size === 0;
+        held[id].add(e.pointerId);
+        btn.style.background = pressedBg;
+        if (first) onDown();
+      };
+      const up = (e: PointerEvent) => {
+        e.preventDefault();
+        if (!held[id].delete(e.pointerId)) return;
+        if (held[id].size === 0) {
+          btn.style.background = IDLE_BG;
+          onUp?.();
+        }
+      };
+      btn.addEventListener("pointerdown", down);
+      btn.addEventListener("pointerup", up);
+      btn.addEventListener("pointercancel", up);
+      btn.addEventListener("contextmenu", (e) => e.preventDefault());
+      return btn;
+    }
+
+    const cluster = (side: "left" | "right"): HTMLDivElement => {
+      const c = document.createElement("div");
+      Object.assign(c.style, {
+        position: "absolute",
+        bottom: "calc(env(safe-area-inset-bottom, 0px) + 18px)",
+        [side]: "calc(env(safe-area-inset-" + side + ", 0px) + 18px)",
+        display: "flex", flexDirection: "column", gap: "10px",
+        alignItems: side === "left" ? "flex-start" : "flex-end",
+        pointerEvents: "none",
+      } as Partial<CSSStyleDeclaration>);
+      return c;
+    };
+
+    const row = (): HTMLDivElement => {
+      const r = document.createElement("div");
+      Object.assign(r.style, { display: "flex", gap: "10px" } as Partial<CSSStyleDeclaration>);
+      return r;
+    };
+
+    // Left: rotate + thrust
+    const left = cluster("left");
+    const rot = row();
+    rot.appendChild(mkBtn("◄", "rot-left", () => { keys["ArrowLeft"] = true; }, () => { keys["ArrowLeft"] = false; }));
+    rot.appendChild(mkBtn("►", "rot-right", () => { keys["ArrowRight"] = true; }, () => { keys["ArrowRight"] = false; }));
+    const thrustBtn = mkBtn("▲ THRUST", "thrust",
+      () => { keys["ArrowUp"] = true; if (o.engineDrone) startDrone(); },
+      () => { keys["ArrowUp"] = false; stopDrone(); }, true);
+    thrustBtn.style.minWidth = "130px";
+    left.appendChild(rot);
+    left.appendChild(thrustBtn);
+
+    // Right: fire + warp
+    const right = cluster("right");
+    if (o.hyperspace) {
+      right.appendChild(mkBtn("↯ WARP", "warp", () => doHyperspace(ship), undefined, true));
+    }
+    const fireBtn = mkBtn("● FIRE", "fire", () => { keys["Space"] = true; }, () => { keys["Space"] = false; }, true, o.particleColor);
+    fireBtn.style.minWidth = "112px";
+    fireBtn.style.minHeight = "112px";
+    fireBtn.style.borderRadius = "50%";
+    right.appendChild(fireBtn);
+
+    // Top-left utility stack (exit + mute), clear of banner (center) and HUD (right).
+    // z-index above the MISSION COMPLETE overlay (100001) so these stay reachable
+    // on touch when the game ends — otherwise the fullscreen complete screen would
+    // cover the exit and trap keyboard-less users in a restart loop.
+    const topLeft = document.createElement("div");
+    topLeft.setAttribute("data-rt-touch", "");   // tagged so cleanup removes it too
+    Object.assign(topLeft.style, {
+      position: "fixed", zIndex: "100002",
+      top: "calc(env(safe-area-inset-top, 0px) + 12px)",
+      left: "calc(env(safe-area-inset-left, 0px) + 12px)",
+      display: "flex", flexDirection: "column", gap: "10px", pointerEvents: "none",
+    } as Partial<CSSStyleDeclaration>);
+
+    const exitBtn = mkBtn("✕", "exit", () => stop());
+    Object.assign(exitBtn.style, { minWidth: "44px", minHeight: "44px", fontSize: "18px", borderRadius: "8px" } as Partial<CSSStyleDeclaration>);
+
+    const muteLabel = () => (state?.muted ? "♪̷" : "♪");
+    const muteBtn = mkBtn(muteLabel(), "mute", () => {
+      if (state) state.muted = !state.muted;
+      stopDrone();                 // kill any running engine drone immediately
+      muteBtn.textContent = muteLabel();
+      muteBtn.style.opacity = state?.muted ? "0.5" : "1";
+    });
+    Object.assign(muteBtn.style, { minWidth: "44px", minHeight: "44px", fontSize: "18px", borderRadius: "8px" } as Partial<CSSStyleDeclaration>);
+
+    topLeft.appendChild(exitBtn);
+    topLeft.appendChild(muteBtn);
+
+    wrapEl.appendChild(left);
+    wrapEl.appendChild(right);
+    document.body.appendChild(wrapEl);
+    // topLeft mounts at body level (not inside wrapEl) so its z-index competes
+    // with the MISSION COMPLETE overlay directly; nested it would be trapped in
+    // wrapEl's fixed-position stacking context and stay behind that overlay.
+    document.body.appendChild(topLeft);
+    if (state) state.touchEl = wrapEl;
+  }
+
   function bootSequence() {
     const el = document.createElement("div");
     el.setAttribute("data-rt-boot", "");
@@ -761,16 +922,21 @@ export function start(opts: DestroySiteOptions = {}): void {
     const el = document.createElement("div");
     el.setAttribute("data-rt-complete", "");
     const pre = document.createElement("pre");
+    const prompt = o.touchControls ? "TAP TO RESTART" : "PRESS R TO RESTART · ESC TO EXIT";
     pre.innerHTML =
       `╔════════════════════════════════════════╗\n` +
       `║         MISSION COMPLETE               ║\n` +
       `╚════════════════════════════════════════╝\n\n` +
       `  TIME       ${mm}:${ss}\n` +
       `  SCORE      ${s.destroyed}\n\n` +
-      `  <span class="rt-restart">PRESS R TO RESTART · ESC TO EXIT</span>`;
+      `  <span class="rt-restart">${prompt}</span>`;
     el.appendChild(pre);
     document.body.appendChild(el);
     state!.completeEl = el;
+    if (o.touchControls) {
+      el.style.cursor = "pointer";
+      el.addEventListener("pointerdown", (e) => { e.preventDefault(); restart(); }, { once: true });
+    }
     playComplete();
   }
 
