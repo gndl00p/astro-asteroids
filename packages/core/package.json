@@ -1,6 +1,6 @@
 {
   "name": "@robbtech/destroy-site",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Asteroids spaceship overlay that lets visitors shoot and destroy elements on any web page. Pure vanilla JS, no deps.",
   "type": "module",
   "main": "./dist/index.js",

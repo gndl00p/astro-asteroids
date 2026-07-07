@@ -88,11 +88,12 @@ const DEFAULT_SKIP = [
   "#rt-asteroids-canvas",
   "[data-asteroids-canvas]",
   "[data-asteroids-banner]",
-  "[data-asteroids-hud]",
+  "[data-asteroids-hud]", "[data-asteroids-hud] *",
   "[data-rt-debris]",
   "[data-rt-crt]",
   "[data-rt-boot]", "[data-rt-boot] *",
   "[data-rt-complete]", "[data-rt-complete] *",
+  "[data-rt-touch]", "[data-rt-touch] *",
   "script", "style", "noscript",
   "svg defs", "svg defs *",
 ];
@@ -737,6 +738,7 @@ export function start(opts: DestroySiteOptions = {}): void {
   function buildTouchControls() {
     const wrapEl = document.createElement("div");
     wrapEl.setAttribute("data-rt-touch", "");
+    wrapEl.setAttribute("data-rt-touch-play", "");   // gameplay cluster; hidden on MISSION COMPLETE
     Object.assign(wrapEl.style, {
       position: "fixed", inset: "0", zIndex: "100000",
       pointerEvents: "none", touchAction: "none",
@@ -819,8 +821,10 @@ export function start(opts: DestroySiteOptions = {}): void {
     const rot = row();
     rot.appendChild(mkBtn("◄", "rot-left", () => { keys["ArrowLeft"] = true; }, () => { keys["ArrowLeft"] = false; }));
     rot.appendChild(mkBtn("►", "rot-right", () => { keys["ArrowRight"] = true; }, () => { keys["ArrowRight"] = false; }));
+    // The game loop owns the drone (started every frame while ArrowUp is held),
+    // matching the keyboard path — the button only sets/clears the key.
     const thrustBtn = mkBtn("▲ THRUST", "thrust",
-      () => { keys["ArrowUp"] = true; if (o.engineDrone) startDrone(); },
+      () => { keys["ArrowUp"] = true; },
       () => { keys["ArrowUp"] = false; stopDrone(); }, true);
     thrustBtn.style.minWidth = "130px";
     left.appendChild(rot);
@@ -934,6 +938,9 @@ export function start(opts: DestroySiteOptions = {}): void {
     document.body.appendChild(el);
     state!.completeEl = el;
     if (o.touchControls) {
+      // Hide the gameplay buttons so they don't show through as live-looking
+      // targets under the overlay; a tap anywhere restarts.
+      (document.querySelector("[data-rt-touch-play]") as HTMLElement | null)?.style.setProperty("display", "none");
       el.style.cursor = "pointer";
       el.addEventListener("pointerdown", (e) => { e.preventDefault(); restart(); }, { once: true });
     }
