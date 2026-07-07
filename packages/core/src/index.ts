@@ -745,8 +745,10 @@ export function start(opts: DestroySiteOptions = {}): void {
       fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
     } as Partial<CSSStyleDeclaration>);
 
-    // Retune banner copy for touch (arrow-key hints don't apply).
-    if (banner) banner.textContent = "DESTROY-SITE.BIN · TAP TO FLY · ♪ MUTE · ✕ EXIT";
+    // Reclaim screen space on small touch screens: hide the instruction banner
+    // (the on-screen buttons are self-labeled) and shrink the HUD into its corner.
+    if (banner) banner.style.display = "none";
+    if (stat) { stat.style.transformOrigin = "top right"; stat.style.transform = "scale(0.68)"; }
 
     const IDLE_BG = "rgba(10,10,10,0.62)";
     const held: Record<string, Set<number>> = Object.create(null);
@@ -816,29 +818,27 @@ export function start(opts: DestroySiteOptions = {}): void {
       return r;
     };
 
-    // Left: rotate + thrust
+    // Split across two thumbs: LEFT thumb steers, RIGHT thumb thrusts + fires.
+    // Left: rotate ◄ ►
     const left = cluster("left");
     const rot = row();
     rot.appendChild(mkBtn("◄", "rot-left", () => { keys["ArrowLeft"] = true; }, () => { keys["ArrowLeft"] = false; }));
     rot.appendChild(mkBtn("►", "rot-right", () => { keys["ArrowRight"] = true; }, () => { keys["ArrowRight"] = false; }));
+    left.appendChild(rot);
+
+    // Right: thrust (top) + fire (bottom, closest to the resting thumb).
     // The game loop owns the drone (started every frame while ArrowUp is held),
     // matching the keyboard path — the button only sets/clears the key.
+    const right = cluster("right");
     const thrustBtn = mkBtn("▲ THRUST", "thrust",
       () => { keys["ArrowUp"] = true; },
       () => { keys["ArrowUp"] = false; stopDrone(); }, true);
-    thrustBtn.style.minWidth = "130px";
-    left.appendChild(rot);
-    left.appendChild(thrustBtn);
-
-    // Right: fire + warp
-    const right = cluster("right");
-    if (o.hyperspace) {
-      right.appendChild(mkBtn("↯ WARP", "warp", () => doHyperspace(ship), undefined, true));
-    }
+    thrustBtn.style.minWidth = "112px";
     const fireBtn = mkBtn("● FIRE", "fire", () => { keys["Space"] = true; }, () => { keys["Space"] = false; }, true, o.particleColor);
     fireBtn.style.minWidth = "112px";
     fireBtn.style.minHeight = "112px";
     fireBtn.style.borderRadius = "50%";
+    right.appendChild(thrustBtn);
     right.appendChild(fireBtn);
 
     // Top-left utility stack (exit + mute), clear of banner (center) and HUD (right).
