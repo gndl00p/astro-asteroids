@@ -279,6 +279,7 @@ export function start(opts: DestroySiteOptions = {}): void {
     stat.appendChild(scoreLabel);
 
     const scoreRow = document.createElement("div");
+    scoreRow.setAttribute("data-rt-score", "");   // the odometer; the only HUD row kept on touch
     scoreRow.style.cssText = "display:flex;justify-content:flex-end;gap:2px;margin-bottom:10px;";
     const SCORE_DIGITS = 6;
     const SCORE_CELL_H = 22;
@@ -746,9 +747,21 @@ export function start(opts: DestroySiteOptions = {}): void {
     } as Partial<CSSStyleDeclaration>);
 
     // Reclaim screen space on small touch screens: hide the instruction banner
-    // (the on-screen buttons are self-labeled) and shrink the HUD into its corner.
+    // (the on-screen buttons are self-labeled) and pare the HUD down to just the
+    // odometer — drop the SCORE label, TIME, combo, and mute rows (mute is a
+    // button now) — then tighten and shrink it into the corner.
     if (banner) banner.style.display = "none";
-    if (stat) { stat.style.transformOrigin = "top right"; stat.style.transform = "scale(0.68)"; }
+    if (stat) {
+      for (const child of Array.from(stat.children)) {
+        if (!(child as HTMLElement).hasAttribute("data-rt-score")) (child as HTMLElement).style.display = "none";
+      }
+      const scoreRow = stat.querySelector<HTMLElement>("[data-rt-score]");
+      if (scoreRow) scoreRow.style.marginBottom = "0";
+      stat.style.padding = "6px 8px";
+      stat.style.minWidth = "0";
+      stat.style.transformOrigin = "top right";
+      stat.style.transform = "scale(0.62)";
+    }
 
     const IDLE_BG = "rgba(10,10,10,0.62)";
     const held: Record<string, Set<number>> = Object.create(null);
